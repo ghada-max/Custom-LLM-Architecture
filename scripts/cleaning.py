@@ -1,14 +1,19 @@
-//delete heavyweight uneeded data
-//LightWeight normalization applied mostly on caracters 
-//lightweignt on ausers prompt 
+
+from pathlib import Path
+from huggingface_hub import hf_hub_download
+import pandas as pd
+from dotenv import load_dotenv
+import re
+
+load_dotenv()
+
+# --- Lexicon 1: templates to remove ---
 _TEMPLATE_RE = re.compile(
-    r"استشهاد\s*ب?(?:ويب|كتاب|دورية|خبر|مجلة|موسوعة|صحيفة)"   # AR cite templates
-    r"|(?i:cite\s+(?:web|book|news|journal)|citation\s+needed)"  # EN cite templates
+    r"استشهاد\s*ب?(?:ويب|كتاب|دورية|خبر|مجلة|موسوعة|صحيفة)"
+    r"|(?i:cite\s+(?:web|book|news|journal)|citation\s+needed)"
 )
 
 # --- Lexicon 2: navigation / reference sections to drop entirely -------------
-# These sections are link and citation dumps with little language value.
-# Titles are compared after light normalization (see _norm_title).
 _NAV_SECTION_TITLES = {
     # Arabic
     "مراجع", "المراجع", "مراجع ومصادر", "راجع", "مصادر", "المصادر",
@@ -21,14 +26,15 @@ _NAV_SECTION_TITLES = {
 }
 
 # MediaWiki heading «== title ==» (any level 2-6).
-_MEDIAWIKI_HEADING_RE = re.compile(r"(?m)^[ \t]*=+[ \t]*(.+?)[ \t]*=+[ \t]*$")
+_MEDIAWIKI_HEADING_RE = re.compile(r"(?m)^\s*=+\s*(.+?)\s*=+\s*$")
 # Markdown heading «## title».
-_MARKDOWN_HEADING_RE = re.compile(r"^[ \t]*#{1,6}[ \t]*(.+?)[ \t]*$")
+_MARKDOWN_HEADING_RE = re.compile(r"^\s*#{1,6}\s*(.+?)\s*$")
 
 # Category / portal link lines like «تصنيف: ...» or «بوابة: ...».
-_CATEGORY_LINE_RE = re.compile(r"(?m)^[ \t]*(?:تصنيف|بوابة|Category|Portal)\s*:.*$")
-#a section body with fewer than this many words is considered empty.
-MIN_SECTION_WORDS=8
+_CATEGORY_LINE_RE = re.compile(r"(?m)^\s*(?:تصنيف|بوابة|Category|Portal)\s*:.*$")
+
+# A section body with fewer than this many words is considered empty.
+MIN_SECTION_WORDS = 8
 
 def _norm_title(title):
     """Normalize a heading for blocklist comparison (AR + EN aware)."""
@@ -36,35 +42,80 @@ def _norm_title(title):
     t = re.sub(r"[\u064B-\u0652\u0640]", "", t)
 
     t = (t.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
-              .replace("ى", "ي").replace("ة", "ه"))
+          .replace("ى", "ي").replace("ة", "ه"))
     return re.sub(r"\s+", " ", t).strip()
 
 
 def split_intro_sections(text):
- #   Split an article chunk into (tite,body) sections.
- text=_MEDIAWIKI_HEADING_RE.sub(r"## \1", text)
+    """Split an article chunk into (title, body) sections."""
+    text = _MEDIAWIKI_HEADING_RE.sub(r"## \1", text)
 
- // split the title f the body
-
-sections = []
-title,body_line="",[]
-for line in text.split("\n"):
-    m=MARKDOWN_HEADING_RE.match(line)
-    if m:
-        sections.append((title,"\n".join(body_lines)))
-        titles, body_lines=m.group(1).strip(),[]
-    else:
-        body_lines.append(line)
-sections.append((title,"\n".join(body_lines)))
-return sections
+    sections = []
+    title, body_lines = "", []
+    for line in text.split("\n"):
+        m = _MARKDOWN_HEADING_RE.match(line)
+        if m:
+            sections.append((title, "\n".join(body_lines)))
+            title, body_lines = m.group(1).strip(), []
+        else:
+            body_lines.append(line)
+    sections.append((title, "\n".join(body_lines)))
+    return sections
 
 
 def _dedupe_consecutive_lines(text):
-    out,prev=[],None
+    out, prev = [], None
     for line in text.split("\n"):
-        stripped=line.strip()
-        if stripped and stripped==prev:
+        stripped = line.strip()
+        if stripped and stripped == prev:
             continue
-         out.append(line)
-         prev=stripped
+        out.append(line)
+        prev = stripped
     return "\n".join(out)
+
+
+def prepare_document(text, min_section_words=MIN_SECTION_WORDS):
+    """
+    Steps:
+    delete leftover
+    delete category/portal link lines
+    split into sections
+    duplicate repeated lines,
+    return the cleaned text
+    """
+    if not isinstance(text, str):
+        return ""
+    text = _TEMPLATE_RE.sub("", text)
+    text = _CATEGORY_LINE_RE.sub("", text)
+    kept = []
+    sections = split_intro_sections(text)
+
+    for title, body in sections:
+        if _norm_title(title) in _NAV_SECTION_TITLES:
+            continue
+        if len(body.split()) < min_section_words:
+            continue
+        block = f"{title}\n{body}" if title else body
+        kept.append(block)
+    cleaned_text = "\n\n".join(kept)
+    cleaned_text = _dedupe_consecutive_lines(cleaned_text)
+    return cleaned_text.strip()
+
+
+def clean_dataframe(df, text_col="text", min_chars=40):
+    if text_col not in df.columns:
+        raise ValueError(
+            f"Column '{text_col}' not found. "
+            f"Available columns: {df.columns.tolist()}"
+        )
+
+    new_df = df.copy()
+    new_df["orig_len"] = new_df[text_col].fillna("").str.len()
+    new_df[text_col] = new_df[text_col].map(prepare_document)
+    new_df = new_df[new_df[text_col].str.len() >= min_chars].reset_index(drop=True)
+
+    return new_df
+
+
+def normalize_text(text):
+    return text
