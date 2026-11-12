@@ -1,4 +1,3 @@
-
 from pathlib import Path
 from huggingface_hub import hf_hub_download
 import pandas as pd
@@ -18,8 +17,8 @@ HD_FILES = {
     "ft_eval": "finetune/eval-00000-of-00001.parquet",
 }
 
-TRAIN_SPLITS = {"phase1_train", "phase2_train", "ft_train"}
-EVAL_SPLITS = {"phase1_eval", "phase2_eval", "ft_eval"}
+TRAIN_SPLITS = {"phase1_train", "phase1_train"}
+EVAL_SPLITS = {"phase1_eval", "phase2_eval", "ft_eval"}  # Ajouté pour éviter l'erreur NameError dans main()
 OUT_DIR = Path(__file__).parent / "output"
 
 
@@ -50,7 +49,6 @@ def clean_phase(phase, input_path, output_path):
     df = pd.read_parquet(input_path)
     print(f"Source : {input_path}")
     print(f"rows: {len(df):,}")
-    print("Columns:", df.columns.tolist())
 
     cleaned_df = clean_dataframe(df)
     removed_rows = len(df) - len(cleaned_df)
@@ -60,7 +58,7 @@ def clean_phase(phase, input_path, output_path):
 
 def main():
     download_and_filter()
-
+    
     for name in TRAIN_SPLITS:
         input_path = OUT_DIR / f"{name}_filtered.parquet"
         output_path = OUT_DIR / f"{name}_clean.parquet"
