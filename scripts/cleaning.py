@@ -3,7 +3,8 @@ from huggingface_hub import hf_hub_download
 import pandas as pd
 from dotenv import load_dotenv
 import re
-
+from tokenizers import Regex
+from tokenizers.normalizers import NFC, Replace, Sequence
 load_dotenv()
 
 # --- Lexicon 1: templates to remove ---
@@ -110,5 +111,21 @@ def clean_dataframe(df, text_col="text", min_chars=40):
     new_df = new_df[new_df[text_col].str.len() >= min_chars].reset_index(drop=True)
 
     return new_df
-def normalize_text():
-    pass
+
+def build_normalizer():
+    return Sequence([
+        NFC(),
+        Replace(Regex(r"[\u064B-\u0652\u0640]"), ""),
+        Replace("أ", "ا"),
+        Replace("إ", "ا"),
+        Replace("آ", "ا"),
+        Replace("ى", "ي"),
+        Replace(Regex(r"[ \t]+"), " "),
+    ])
+
+
+_NORMALIZER = build_normalizer()
+
+
+def normalize_text(text):
+    return _NORMALIZER.normalize_str(text)

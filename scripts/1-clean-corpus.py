@@ -17,7 +17,7 @@ HD_FILES = {
     "ft_eval": "finetune/eval-00000-of-00001.parquet",
 }
 
-TRAIN_SPLITS = {"phase1_train", "phase1_train"}
+TRAIN_SPLITS = {"phase1_train", "phase2_train"}
 EVAL_SPLITS = {"phase1_eval", "phase2_eval", "ft_eval"}  # Ajouté pour éviter l'erreur NameError dans main()
 OUT_DIR = Path(__file__).parent / "output"
 
@@ -42,7 +42,19 @@ def download_and_filter():
 
         output_path = OUT_DIR / f"{name}_filtered.parquet"
         df.to_parquet(output_path, index=False)
+def demo_normalizer():
+    print("TYPE B NORMALIZER (embeddable, runs at inference too)")
 
+    samples = [
+        "جُمْهُورِيَّةُ مِصْرَ الْعَرَبِيَّة",      # heavy diacritics
+        "أحمد إبراهيم آدم علىّ",                   # alef + ya variants
+        "The   United    States",                 # extra spaces
+    ]
+
+    for s in samples:
+        print(f"  raw       : {s}")
+        print(f"  normalized: {normalize_text(s)}")
+        print("="*30)
 
 def clean_phase(phase, input_path, output_path):
     print(f"=== clean_phase: {phase} ===")
@@ -72,3 +84,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+     # demo_normalizer()
