@@ -116,7 +116,7 @@ def build_normalizer():
     return Sequence([
         NFC(),
         Replace(Regex(r"[\u064B-\u0652\u0640]"), ""),
-        Replace("أ", "ا"),
+        Replace("أ", "ا"), 
         Replace("إ", "ا"),
         Replace("آ", "ا"),
         Replace("ى", "ي"),
