@@ -17,4 +17,20 @@ class MultiHeadAttention(nn.Module):
      )
      self.register_buffer("mask", mask, persistent=False)
     def forward(self):
-        pass
+        batch_size, seq_len, d_model = x.shape
+
+        q = self.W_q(x).view(batch_size, seq_len, self.n_heads, self.d_k).transpose(1, 2)
+        k = self.W_k(x).view(batch_size, seq_len, self.n_heads, self.d_k).transpose(1, 2)
+        v = self.W_v(x).view(batch_size, seq_len, self.n_heads, self.d_k).transpose(1, 2)
+
+        scores = q @ k.transpose(-2, -1)
+        scores = scores / self.d_k**0.5
+
+        scores = scores.masked_fill(~mask, float("-inf"))
+
+        weights = F.softmax(scores, dim=-1)
+        out = weights @ v
+
+        out = out.transpose(1, 2).contiguous().view(batch_size, seq_len, d_model)
+
+        return self.W_o(out), weights
